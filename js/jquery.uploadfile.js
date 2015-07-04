@@ -1,33 +1,3 @@
-/*
- * ajax progress from:
- * https://github.com/englercj/jquery-ajax-progress
- */
-(function($, window, undefined) {
-    //is onprogress supported by browser?
-    var hasOnProgress = ("onprogress" in $.ajaxSettings.xhr());
-
-    //If not supported, do nothing
-    if (!hasOnProgress) {
-        return;
-    }
-
-    //patch ajax settings to call a progress callback
-    var oldXHR = $.ajaxSettings.xhr;
-    $.ajaxSettings.xhr = function() {
-        var xhr = oldXHR();
-        if(xhr instanceof window.XMLHttpRequest) {
-            xhr.addEventListener('progress', this.progress, false);
-        }
-
-        if(xhr.upload) {
-            xhr.upload.addEventListener('progress', this.progress, false);
-        }
-
-        return xhr;
-    };
-})(jQuery, window);
-
-
 /*!
  * jQuery Upload File Plugin
  * version: 3.1.0
@@ -63,13 +33,7 @@
         var g = parseInt(color.substr(2, 2), 16);
         var b = parseInt(color.substr(4, 2), 16);
         var c = r+','+g+','+b;
-        var bg = '/*ABP*/background:-moz-linear-gradient(left,  rgba('+c+'1) 0%, rgba('+c+',1) '+percent+'%, rgba(255,255,255,0) '+percent+'.1%);'+
-            'background:-webkit-gradient(linear, left top, right top, color-stop(0%,rgba('+c+',1)), color-stop('+percent+'%,rgba('+c+',1)), color-stop('+percent+'.1%,rgba('+c+',0)));' +
-            'background:-webkit-linear-gradient(left,  rgba('+c+',1) 0%,rgba(0,113,150,1) '+percent+'%,rgba(255,255,255,0) '+percent+'.1%);' +
-            'background:-o-linear-gradient(left,  rgba('+c+',1) 0%,rgba('+c+',1) '+percent+'%,rgba(255,255,255,0) '+percent+'.1%);' +
-            'background:-ms-linear-gradient(left,  rgba('+c+',1) 0%,rgba('+c+',1) '+percent+'%,rgba(255,255,255,0) '+percent+'.1%);' +
-            'background:linear-gradient(to right,  rgba('+c+',1) 0%,rgba('+c+',1) '+percent+'%,rgba(255,255,255,0) '+percent+'.1%);/*ABP*/';
-        dom.attr('style', bg);
+        dom.css('background-position', (100-percent) + '% 0');
     }
 
     function Uploader (dom, options) {
@@ -125,16 +89,18 @@
 
     function UploadFile (file, uploader) {
         this.tr = $(
-            '<tr>'+
-            '<td colspan="3">'+
-                $('<div>').append($(uploader.dom).children().clone()).html()+
-            file.name + ' ' + bytesToH(file.size) +
-            '</td>'+
+            '<tr data-dir="'+uploader.dir+'" data-type="file" data-file="'+file.name+'" data-source="'+uploader.options.source+'">'+
+                '<td colspan="3" class="transition">'+
+                    $('<div>').append(
+                        $(uploader.dom).children().clone()).html() + file.name + ' ' + bytesToH(file.size
+                    ) +
+                '</td>'+
             '</tr>'
         );
         this.td = this.tr.find('td');
         this.formData = new FormData;
         this.formData.append('file', file, file.name);
+        this.uploader = uploader;
         $(uploader.tr)
             .siblings('tr[data-dir="'+this.attr(uploader.dir)+'"]')
             .last()
@@ -142,17 +108,25 @@
 
         var td = this.td;
 
-        this.success = function(res){
-            console.log(arguments);
+        this.success = function(result){
+            $(td).removeClass('transition');
+            if (result.error) {
+                $(td).css({
+                    'background-color': '#a94442',
+                    color: '#fff'
+                }).append($('<span class="error"> '+result.message+'</span>'));
+            } else {
+                $(td).css({
+                    'background-color': '#5cb85c',
+                    color: '#fff'
+                });
+                this.uploader.options.success(this.tr);
+            }
         }
+        var me = this;
 
         var xhr = new XMLHttpRequest();
         xhr.file = file;
-        xhr.addEventListener('progress', function(e) {
-            var done = e.loaded || e.position;
-            var total = e.total || e.totalSize;
-            applyBgPercent(td, Math.floor((done/total)*100), '007196');
-        }, false);
         xhr.upload.onprogress = function(e) {
             var done = e.loaded || e.position;
             var total = e.total || e.totalSize;
@@ -161,7 +135,7 @@
         xhr.onreadystatechange = function(e) {
             if ( 4 == this.readyState ) {
                 var response = this.response;
-                //console.log(response);
+                me.success(JSON.parse(response));
             }
         };
         xhr.open('post', uploader.url, true);
